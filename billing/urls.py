@@ -1,6 +1,8 @@
-from rest_framework import routers
-from .views import ClientViewSet
-from django.urls import path, include
+from django.urls import path
+from . import views
 
-router = routers.DefaultRouter()
-router.register('clients', ClientViewSet, basename="client")
+app_name = "billing"
+urlpatterns = [
+    path("clients/", views.client_list, name="client-list"),
+    path("clients/<uuid:pk>/", views.client_detail, name="client-detail"),
+]
