@@ -10,5 +10,17 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
 
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: invoicing_pgadmin
+    restart: unless-stopped
+    environment:
+      PGADMIN_DEFAULT_EMAIL: Emmyolash@gmail.com
+      PGADMIN_DEFAULT_PASSWORD: admin_pass
+    ports:
+      - "8080:80"
+    depends_on:
+      - db
+
 volumes:
   postgres_data:

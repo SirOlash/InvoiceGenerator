@@ -1,45 +1,52 @@
-from django.db.models import QuerySet
-from rest_framework.decorators import api_view, permission_classes
-from rest_framework import permissions, status
+from rest_framework import viewsets, permissions, status
 from rest_framework.response import Response
 from django.shortcuts import get_object_or_404
 
-from .models import Client
-from .serializers import ClientSerializer
+from .models import Invoice
+from .serializers import InvoiceSerializer
 
 
-@api_view(["GET", "POST"])
-@permission_classes([permissions.IsAuthenticated])
-def client_list(request):
-    if request.method == "GET":
-        qs = Client.objects.filter(created_by=request.user)
-        serializer = ClientSerializer(qs, many=True, context={"request": request})
-        return Response(serializer.data)
-
-    # POST
-    serializer = ClientSerializer(data=request.data, context={"request": request})
-    if serializer.is_valid():
-        client = serializer.save()
-        return Response(ClientSerializer(client, context={"request": request}).data, status=status.HTTP_201_CREATED)
-    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+class IsOwnerOr404:
+    """
+    Lightweight object-level check implemented inside get_object().
+    We don't create a separate permission class because we want to *hide*
+    non-owned objects (404) rather than return 403.
+    """
+    # dummy container for intent only
 
 
-@api_view(["GET", "PUT", "PATCH", "DELETE"])
-@permission_classes([permissions.IsAuthenticated])
-def client_detail(request, pk):
-    obj = get_object_or_404(Client, created_by=request.user, pk=pk)
+class InvoiceViewSet(viewsets.ModelViewSet):
+    """
+    Handles:
+      - list:  GET /api/invoices/        -> invoices for request.user
+      - retrieve: GET /api/invoices/{pk}/ -> invoice detail (must belong to user)
+      - create: POST /api/invoices/       -> create invoice + items (handled by serializer)
+      - update/partial_update/destroy: allowed only for owner's invoices
+    Important:
+      - creation is performed with serializer.create(), which already uses the request user
+        (your InvoiceSerializer.create() expects `self.context['request'].user`).
+    """
+    serializer_class = InvoiceSerializer
+    permission_classes = [permissions.IsAuthenticated]
+    lookup_field = "pk"
 
-    if request.method == "GET":
-        serializer = ClientSerializer(obj, context={"request": request})
-        return Response(serializer.data)
+    def get_queryset(self):
+        return Invoice.objects.filter(created_by=self.request.user).order_by("-created_at")
 
-    if request.method in ("PUT", "PATCH"):
-        partial = (request.method == "PATCH")
-        serializer = ClientSerializer(obj, data=request.data, partial=partial, context={"request": request})
-        if serializer.is_valid():
-            serializer.save()
-            return Response(serializer.data)
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    def get_object(self):
+        queryset = self.get_queryset()
+        obj = get_object_or_404(queryset, pk=self.kwargs.get(self.lookup_field))
+        return obj
 
-    obj.delete()
-    return Response(status=status.HTTP_204_NO_CONTENT)
+    def perform_create(self, serializer):
+        serializer.save()
+
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        self.perform_create(serializer)
+
+        invoice = Invoice.objects.get(pk=serializer.instance.pk)
+        out_serializer = self.get_serializer(invoice)
+        headers = self.get_success_headers(out_serializer.data)
+        return Response(out_serializer.data, status=status.HTTP_201_CREATED, headers=headers)

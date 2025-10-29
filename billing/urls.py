@@ -1,8 +1,12 @@
-from django.urls import path
-from . import views
+from django.urls import path, include
+from rest_framework.routers import DefaultRouter
+from .views import InvoiceViewSet
 
 app_name = "billing"
+
+router = DefaultRouter()
+router.register(r"invoices", InvoiceViewSet, basename="invoice")
+
 urlpatterns = [
-    path("clients/", views.client_list, name="client-list"),
-    path("clients/<uuid:pk>/", views.client_detail, name="client-detail"),
+    path("", include(router.urls)),
 ]
